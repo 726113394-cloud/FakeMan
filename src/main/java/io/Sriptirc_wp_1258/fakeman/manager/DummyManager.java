@@ -128,7 +128,7 @@ public class DummyManager {
         dummy.setArmor(new ItemStack[4]);
         
         // 生成假人实体
-        if (!dummy.spawn()) {
+        if (!dummy.spawn(owner)) {
             owner.sendMessage("§c召唤假人失败！");
             // 退款
             plugin.getEconomyManager().depositMoney(owner, getSummonCost());

@@ -1,6 +1,8 @@
 package io.Sriptirc_wp_1258.fakeman.commands;
 
 import io.Sriptirc_wp_1258.fakeman.Fakeman;
+import io.Sriptirc_wp_1258.fakeman.economy.EconomyManager;
+import io.Sriptirc_wp_1258.fakeman.entity.EntityManager;
 import io.Sriptirc_wp_1258.fakeman.manager.DummyManager;
 import io.Sriptirc_wp_1258.fakeman.objects.Dummy;
 import org.bukkit.Bukkit;
@@ -82,6 +84,16 @@ public class CommandManager implements CommandExecutor, TabCompleter {
                 handleTeleport(player, args);
                 break;
                 
+            case "menu":
+            case "functions":
+                handleMenu(player);
+                break;
+                
+            case "check":
+            case "status":
+                handleCheck(player);
+                break;
+                
             case "reload":
                 handleReload(player);
                 break;
@@ -108,6 +120,8 @@ public class CommandManager implements CommandExecutor, TabCompleter {
         player.sendMessage("§e/fakeman time <假人名> [时间] §7- 查看/设置假人时间");
         player.sendMessage("§e/fakeman remove <假人名> §7- 移除假人");
         player.sendMessage("§e/fakeman tp <假人名> §7- 传送到假人位置");
+        player.sendMessage("§e/fakeman menu §7- 显示假人功能菜单");
+        player.sendMessage("§e/fakeman check §7- 检查插件状态和Citizens连接");
         player.sendMessage("§e/fakeman reload §7- 重载插件配置");
         
         if (player.hasPermission("FakeMan.admin")) {
@@ -163,7 +177,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
         for (int i = 0; i < dummies.size(); i++) {
             Dummy dummy = dummies.get(i);
             String status = dummy.isSpawned() ? "§a在线" : "§c离线";
-            String mode = getModeDisplayName(dummy.getMode());
+            String mode = getModeDisplayNameNew(dummy.getMode());
             String timeLeft = formatTime(dummy.getMaxOnlineTime() - dummy.getOnlineTime());
             
             player.sendMessage("§e" + (i + 1) + ". §7" + dummy.getName() + 
@@ -499,6 +513,169 @@ public class CommandManager implements CommandExecutor, TabCompleter {
         return count;
     }
     
+    /**
+     * 显示假人功能菜单（聊天框）
+     */
+    private void handleMenu(Player player) {
+        UUID playerUuid = player.getUniqueId();
+        List<Dummy> dummies = dummyManager.getPlayerDummies(playerUuid);
+        
+        if (dummies.isEmpty()) {
+            player.sendMessage("§c你还没有召唤任何假人！");
+            player.sendMessage("§7使用 §e/fakeman summon §7召唤一个假人");
+            return;
+        }
+        
+        player.sendMessage("§6§l=== 假人功能菜单 ===");
+        player.sendMessage("§7你有 §e" + dummies.size() + " §7个假人");
+        
+        for (int i = 0; i < dummies.size(); i++) {
+            Dummy dummy = dummies.get(i);
+            String status = dummy.isSpawned() ? "§a● 在线" : "§c● 离线";
+            String mode = getModeDisplayNameNew(dummy.getMode());
+            
+            player.sendMessage("§8[§e" + (i + 1) + "§8] §f" + dummy.getName() + " " + status);
+            player.sendMessage("  §7模式: §e" + mode);
+            player.sendMessage("  §7血量: §e" + String.format("%.1f", dummy.getHealth()) + "/" + 
+                String.format("%.1f", dummy.getMaxHealth()));
+            player.sendMessage("  §7在线时间: §e" + formatTimeNew(dummy.getOnlineTime()) + "/" + 
+                formatTimeNew(dummy.getMaxOnlineTime()));
+            
+            // 显示功能按钮
+            player.sendMessage("  §7功能: §a[跟随] §e[挂机] §b[传送] §d[信息]");
+            player.sendMessage("  §7背包: §6右键假人打开背包");
+            player.sendMessage("");
+        }
+        
+        player.sendMessage("§6§l=== 可用命令 ===");
+        player.sendMessage("§e/fm mode <假人名> <follow|idle> §7- 切换假人模式");
+        player.sendMessage("§e/fm tp <假人名> §7- 传送到假人位置");
+        player.sendMessage("§e/fm info <假人名> §7- 查看假人详细信息");
+        player.sendMessage("§e/fm time <假人名> <时间> §7- 设置假人最大在线时间");
+        player.sendMessage("§e/fm remove <假人名> §7- 移除假人");
+        player.sendMessage("§7§o提示: 右键假人可以打开其背包");
+        
+        // 发送点击提示
+        player.sendMessage("");
+        player.sendMessage("§a§l快速操作:");
+        player.sendMessage("§7输入 §e/fm mode " + dummies.get(0).getName() + " follow §7让假人跟随你");
+        player.sendMessage("§7输入 §e/fm mode " + dummies.get(0).getName() + " idle §7让假人挂机");
+    }
+    
+    private String getModeDisplayNameNew(String mode) {
+        switch (mode) {
+            case "idle":
+                return "挂机";
+            case "follow":
+                return "跟随";
+            default:
+                return mode;
+        }
+    }
+    
+    private String formatTimeNew(long seconds) {
+        if (seconds < 60) {
+            return seconds + "秒";
+        } else if (seconds < 3600) {
+            return (seconds / 60) + "分" + (seconds % 60) + "秒";
+        } else {
+            long hours = seconds / 3600;
+            long minutes = (seconds % 3600) / 60;
+            return hours + "小时" + minutes + "分";
+        }
+    }
+    
+    /**
+     * 检查插件状态
+     */
+    private void handleCheck(Player player) {
+        player.sendMessage("§6§l=== FakeMan 插件状态检查 ===");
+        
+        // 检查插件基本信息
+        player.sendMessage("§7插件版本: §e" + plugin.getDescription().getVersion());
+        player.sendMessage("§7Minecraft版本: §e1.20.x");
+        
+        // 检查经济系统
+        EconomyManager economyManager = plugin.getEconomyManager();
+        boolean economyEnabled = economyManager.isEnabled();
+        player.sendMessage("§7经济系统: " + (economyEnabled ? "§a已启用" : "§c未启用"));
+        if (economyEnabled) {
+            player.sendMessage("§7  货币名称: §e" + economyManager.getCurrencyName());
+            player.sendMessage("§7  召唤费用: §e" + economyManager.format(economyManager.getSummonCost()));
+        }
+        
+        // 检查数据库
+        player.sendMessage("§7数据存储: §aSQLite数据库");
+        
+        // 检查实体管理器
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            String managerType = entityManager.getClass().getSimpleName();
+            player.sendMessage("§7实体管理器: §e" + managerType);
+            
+            // 检查Citizens连接
+            boolean citizensConnected = managerType.equals("CitizensManager") && entityManager.isEnabled();
+            player.sendMessage("§7Citizens连接: " + 
+                (citizensConnected ? "§a已连接" : "§c未连接/使用盔甲架"));
+            
+            if (!citizensConnected) {
+                // 检查配置
+                boolean configUseCitizens = plugin.getPluginConfig().getBoolean("dummy.use-citizens", false);
+                player.sendMessage("§7  配置设置: " + 
+                    (configUseCitizens ? "§e使用Citizens" : "§e使用盔甲架"));
+                
+                // 检查Citizens插件是否存在
+                boolean citizensPluginExists = Bukkit.getPluginManager().getPlugin("Citizens") != null;
+                player.sendMessage("§7  Citizens插件: " + 
+                    (citizensPluginExists ? "§a已安装" : "§c未安装"));
+                
+                if (configUseCitizens && !citizensPluginExists) {
+                    player.sendMessage("§c  §l警告: 配置要求使用Citizens，但Citizens插件未安装！");
+                    player.sendMessage("§7  解决方案: 安装Citizens插件或修改配置 use-citizens: false");
+                }
+            }
+        } else {
+            player.sendMessage("§7实体管理器: §c未初始化");
+        }
+        
+        // 检查假人数量
+        UUID playerUuid = player.getUniqueId();
+        List<Dummy> dummies = dummyManager.getPlayerDummies(playerUuid);
+        int maxDummies = getMaxDummies(player);
+        player.sendMessage("§7你的假人: §e" + dummies.size() + "/" + maxDummies);
+        
+        // 检查权限
+        player.sendMessage("§7权限检查:");
+        player.sendMessage("§7  FakeMan.use: " + 
+            (player.hasPermission("FakeMan.use") ? "§a有权限" : "§c无权限"));
+        player.sendMessage("§7  FakeMan.expend: " + 
+            (player.hasPermission("FakeMan.expend") ? "§a有权限" : "§c无权限"));
+        player.sendMessage("§7  FakeMan.admin: " + 
+            (player.hasPermission("FakeMan.admin") ? "§a有权限" : "§c无权限"));
+        
+        // 检查配置版本
+        int configVersion = plugin.getPluginConfig().getInt("ScriptIrc-config-version", 0);
+        player.sendMessage("§7配置版本: §e" + configVersion);
+        
+        // 提供建议
+        player.sendMessage("");
+        player.sendMessage("§6§l建议:");
+        if (entityManager != null && entityManager.getClass().getSimpleName().equals("ArmorStandManager")) {
+            boolean configUseCitizens = plugin.getPluginConfig().getBoolean("dummy.use-citizens", false);
+            boolean citizensPluginExists = Bukkit.getPluginManager().getPlugin("Citizens") != null;
+            
+            if (configUseCitizens && !citizensPluginExists) {
+                player.sendMessage("§c1. 安装Citizens插件以获得更好的假人体验");
+                player.sendMessage("§c2. 或修改config.yml: dummy.use-citizens: false");
+            } else if (!configUseCitizens && citizensPluginExists) {
+                player.sendMessage("§a1. 可以修改config.yml: dummy.use-citizens: true");
+                player.sendMessage("§a2. 然后使用 /fakeman reload 启用Citizens假人");
+            }
+        }
+        
+        player.sendMessage("§7使用 §e/fakeman help §7查看完整命令列表");
+    }
+    
     private int getMaxDummies(Player player) {
         int defaultMax = plugin.getPluginConfig().getInt("limits.default-max-dummies", 1);
         if (player.hasPermission("FakeMan.expend")) {
@@ -521,7 +698,7 @@ public class CommandManager implements CommandExecutor, TabCompleter {
             // 主命令补全
             List<String> commands = Arrays.asList(
                 "help", "summon", "list", "info", "mode", 
-                "time", "remove", "tp", "reload"
+                "time", "remove", "tp", "menu", "functions", "check", "status", "reload"
             );
             
             if (player.hasPermission("FakeMan.admin")) {

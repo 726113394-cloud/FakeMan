@@ -30,6 +30,9 @@
 - **Vault** - 经济系统支持
 - **Minecraft版本**：1.20.x
 
+### 可选插件（增强功能）
+- **Citizens** - 提供更真实的NPC假人（支持玩家皮肤、完整动画）
+
 ### 推荐配置
 - 至少2GB内存
 - 支持SQLite数据库
@@ -60,6 +63,14 @@
 # 传送到假人
 /fakeman tp <假人名>
 
+# 显示功能菜单
+/fakeman menu                   # 聊天框显示所有功能
+/fakeman functions              # 同menu命令
+
+# 检查插件状态
+/fakeman check                  # 检查插件状态和Citizens连接
+/fakeman status                 # 同check命令
+
 # 移除假人
 /fakeman remove <假人名> confirm
 ```
@@ -81,6 +92,10 @@
 | `/fakeman time <假人名> [时间]` | 查看/设置在线时间 | FakeMan.use（查看）<br>FakeMan.expend（设置） |
 | `/fakeman remove <假人名>` | 移除假人 | FakeMan.use |
 | `/fakeman tp <假人名>` | 传送到假人 | FakeMan.use |
+| `/fakeman menu` | 显示假人功能菜单（聊天框） | FakeMan.use |
+| `/fakeman functions` | 同menu命令 | FakeMan.use |
+| `/fakeman check` | 检查插件状态和Citizens连接 | FakeMan.use |
+| `/fakeman status` | 同check命令 | FakeMan.use |
 | `/fakeman reload` | 重载配置 | FakeMan.admin |
 
 ### 管理员命令
@@ -104,6 +119,7 @@ dummy:
   max-online-time: 86400       # 最大在线时间（秒）
   inventory-size: 36           # 背包大小
   default-mode: "idle"         # 默认模式
+  use-citizens: true           # 是否使用Citizens NPC（需要Citizens插件）
 
 # 经济设置
 economy:
@@ -177,7 +193,64 @@ A: 需要 `FakeMan.expend` 权限，然后使用：
 /fakeman time <假人名> 24h
 ```
 
+### Q: Citizens假人和盔甲架假人有什么区别？
+A: **Citizens假人**：
+- 使用真实玩家皮肤（召唤者的皮肤）
+- 完整玩家动画和动作
+- 更像真实在线玩家
+- 需要Citizens插件支持
+
+**盔甲架假人**：
+- 小型发光盔甲架外观
+- 基础装备显示
+- 无需额外插件
+- 兼容性更好
+
+### Q: 如何切换假人类型？
+A: 修改配置文件 `config.yml`：
+```yaml
+dummy:
+  use-citizens: true   # true=使用Citizens，false=使用盔甲架
+```
+修改后重启服务器或使用 `/fakeman reload` 重载配置。
+
+### Q: 如何知道插件是否成功连接到Citizens？
+A: 插件启动时会在控制台显示详细状态信息：
+```
+═══════════════════════════════════════════════════
+FakeMan 假人插件 v1.2.0
+作者: ScriptIrc
+✅ 状态: 已连接到Citizens插件
+✅ 假人类型: 真实玩家NPC
+✅ 功能: 玩家皮肤、完整动画、服务器列表显示
+═══════════════════════════════════════════════════
+使用 /fakeman check 查看详细状态
+═══════════════════════════════════════════════════
+```
+如果连接失败，会显示具体原因和建议解决方案。
+
 ## 更新日志
+
+### v1.2.0
+- **智能行为系统**：玩家行为追踪，假人智能模仿
+  - 玩家砍树 → 假人收集同类型木材
+  - 玩家挖矿 → 假人收集同类型矿石
+  - 玩家钓鱼 → 假人跟着钓鱼
+  - 玩家被攻击 → 假人保护玩家
+- **聊天框菜单**：新增 `/fakeman menu` 命令，在聊天框显示完整功能列表
+- **状态检查命令**：新增 `/fakeman check` 命令，检查插件状态和Citizens连接
+- **控制台提示**：插件启动时显示Citizens连接状态和详细诊断信息
+- **安全增强**：防止假人掉入虚空，危险位置自动传送
+- **工具检查**：假人自动检查背包中是否有对应工具/食物
+- **玩家列表显示**：Citizens假人显示为在线玩家
+- **配置版本**：更新至ScriptIrc-config-version: 3
+
+### v1.1.0
+- **Citizens集成**：支持使用Citizens插件创建真实玩家NPC
+- **双实体系统**：可配置使用Citizens NPC或盔甲架假人
+- **智能回退**：Citizens不可用时自动使用盔甲架
+- **配置升级**：新增 `use-citizens` 配置选项
+- **实体管理抽象**：统一的EntityManager接口
 
 ### v1.0.0
 - 初始版本发布

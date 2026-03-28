@@ -1,16 +1,14 @@
 package io.Sriptirc_wp_1258.fakeman.objects;
 
 import io.Sriptirc_wp_1258.fakeman.Fakeman;
+import io.Sriptirc_wp_1258.fakeman.entity.EntityManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.attribute.Attribute;
-import org.bukkit.entity.*;
-import org.bukkit.inventory.EntityEquipment;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.inventory.meta.ItemMeta;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 
 import java.util.*;
 
@@ -21,7 +19,7 @@ public class Dummy {
     private final String name;
     
     private Location location;
-    private Zombie entity;
+    private ArmorStand armorStand; // 盔甲架实体
     private double health;
     private double maxHealth;
     private String mode; // idle, follow
@@ -35,6 +33,7 @@ public class Dummy {
     private Player targetPlayer;
     private Material lastTargetMaterial;
     private long lastActionTime;
+    private long lastFoodTime;
     private Location safeLocation;
     
     public Dummy(Fakeman plugin, UUID ownerUuid, String name, Location location) {
@@ -55,56 +54,60 @@ public class Dummy {
         this.targetPlayer = null;
         this.lastTargetMaterial = null;
         this.lastActionTime = System.currentTimeMillis();
+        this.lastFoodTime = 0L;
         this.safeLocation = location.clone();
     }
     
-    public boolean spawn() {
-        if (entity != null && entity.isValid()) {
+    public boolean spawn(Player owner) {
+        if (armorStand != null && !armorStand.isDead()) {
             return false;
         }
         
         try {
-            // 创建僵尸实体作为假人
-            Zombie zombie = location.getWorld().spawn(location, Zombie.class);
+            // 通过实体管理器创建实体
+            EntityManager entityManager = plugin.getEntityManager();
+            if (entityManager == null || !entityManager.isEnabled()) {
+                plugin.getLogger().warning("实体管理器未启用");
+                return false;
+            }
             
-            // 设置假人属性
-            zombie.setCustomName(getDisplayName());
-            zombie.setCustomNameVisible(true);
-            zombie.setAI(false); // 禁用原版AI
-            zombie.setAdult();
-            zombie.setCanPickupItems(false);
-            zombie.setRemoveWhenFarAway(false);
-            zombie.setSilent(true);
+            // 创建实体
+            boolean success = entityManager.createDummyEntity(this, owner);
+            if (!success) {
+                plugin.getLogger().warning("创建假人实体失败");
+                return false;
+            }
             
-            // 设置血量
-            Objects.requireNonNull(zombie.getAttribute(Attribute.GENERIC_MAX_HEALTH)).setBaseValue(maxHealth);
-            zombie.setHealth(health);
+            // 更新装备
+            updateEquipment();
             
-            // 添加效果使其看起来像假人
-            zombie.addPotionEffect(new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 0, false, false));
-            zombie.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, Integer.MAX_VALUE, 255, false, false));
+            // 更新显示名称
+            updateDisplayName();
             
-            // 设置装备
-            updateEquipment(zombie);
-            
-            this.entity = zombie;
             return true;
             
         } catch (Exception e) {
-            plugin.getLogger().severe("生成假人实体失败: " + e.getMessage());
+            plugin.getLogger().severe("生成假人失败: " + e.getMessage());
             return false;
         }
     }
     
     public void despawn() {
-        if (entity != null && entity.isValid()) {
-            entity.remove();
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            entityManager.despawnEntity(this);
         }
-        entity = null;
+    }
+    
+    public void delete() {
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            entityManager.deleteEntity(this);
+        }
     }
     
     public void update() {
-        if (entity == null || !entity.isValid()) {
+        if (!isSpawned()) {
             return;
         }
         
@@ -133,23 +136,27 @@ public class Dummy {
         updateDisplayName();
         
         // 更新装备
-        updateEquipment(entity);
+        updateEquipment();
     }
     
     public void tick() {
         // 每tick执行的操作
-        if (entity != null && entity.isValid()) {
+        if (isSpawned()) {
             // 保持假人不动（idle模式）
             if (mode.equals("idle")) {
-                entity.teleport(location);
+                EntityManager entityManager = plugin.getEntityManager();
+                if (entityManager != null) {
+                    entityManager.teleportEntity(this, location);
+                }
             }
         }
     }
     
     private void updateIdleMode() {
         // 挂机模式，保持原地不动
-        if (entity != null) {
-            entity.teleport(location);
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            entityManager.teleportEntity(this, location);
         }
     }
     
@@ -174,12 +181,12 @@ public class Dummy {
     }
     
     private void followPlayer(Player player) {
-        if (entity == null || !entity.isValid()) {
+        if (!isSpawned()) {
             return;
         }
         
         Location playerLoc = player.getLocation();
-        Location dummyLoc = entity.getLocation();
+        Location dummyLoc = getLocation();
         
         // 计算距离
         double distance = dummyLoc.distance(playerLoc);
@@ -193,7 +200,10 @@ public class Dummy {
                 0,
                 (Math.random() * 5) - 2.5
             );
-            entity.teleport(findSafeLocation(teleportLoc));
+            EntityManager entityManager = plugin.getEntityManager();
+            if (entityManager != null) {
+                entityManager.teleportEntity(this, findSafeLocation(teleportLoc));
+            }
             return;
         }
         
@@ -201,12 +211,16 @@ public class Dummy {
             // 向玩家移动
             moveTowards(playerLoc);
         }
+        
+        // 看向玩家
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            entityManager.lookAt(this, playerLoc);
+        }
     }
     
     private void imitatePlayerBehavior(Player player) {
         // 获取玩家最近的行为
-        // 这里需要监听玩家事件，暂时简单实现
-        
         long currentTime = System.currentTimeMillis();
         if (currentTime - lastActionTime < 1000) { // 1秒冷却
             return;
@@ -229,7 +243,7 @@ public class Dummy {
                 }
             } else if (isWeapon(material)) {
                 // 玩家在战斗，检查假人是否有武器
-                if (hasWeapon()) {
+                if (hasWeaponInHand()) {
                     // 假人有武器，准备战斗
                     prepareCombat(player);
                 } else {
@@ -292,29 +306,24 @@ public class Dummy {
         }
     }
     
-    private void mineBlock(Location location) {
-        // 简单实现：播放挖矿动画
-        if (entity != null) {
-            entity.swingMainHand();
-            // 可以在这里添加粒子效果
-        }
+    public void mineBlock(Location location) {
+        // 简单实现：播放挖矿粒子效果
+        playMiningParticles();
     }
     
-    private void chopTree(Location location) {
-        // 简单实现：播放砍树动画
-        if (entity != null) {
-            entity.swingMainHand();
-            // 可以在这里添加粒子效果
-        }
+    public void chopTree(Location location) {
+        // 简单实现：播放砍树粒子效果
+        playChoppingParticles();
     }
     
     private void goFishing(Location location) {
         // 简单实现：移动到水边
-        if (entity != null) {
+        if (isSpawned()) {
             Location waterLocation = findWaterLocation(location);
             if (waterLocation != null) {
                 moveTowards(waterLocation);
-                entity.swingMainHand();
+                // 播放钓鱼粒子效果
+                playFishingParticles();
             }
         }
     }
@@ -322,63 +331,44 @@ public class Dummy {
     private void prepareCombat(Player player) {
         // 检查玩家是否在战斗
         // 简单实现：看向玩家看的方向
-        if (entity != null) {
-            entity.teleport(entity.getLocation().setDirection(player.getLocation().getDirection()));
+        if (isSpawned()) {
+            EntityManager entityManager = plugin.getEntityManager();
+            if (entityManager != null) {
+                entityManager.lookAt(this, player.getLocation());
+            }
         }
     }
     
     private void moveTowards(Location target) {
-        if (entity == null || !entity.isValid()) {
+        if (!isSpawned()) {
             return;
         }
         
-        Location current = entity.getLocation();
+        // 简单移动：传送到目标附近
+        Location current = getLocation();
         Location direction = target.clone().subtract(current);
         
         // 设置朝向
         current.setDirection(direction.toVector());
-        entity.teleport(current);
-        
-        // 简单移动（由于AI被禁用，这里只是转向）
-        // 实际移动需要更复杂的路径查找
-    }
-    
-    private Location findSafeLocation(Location location) {
-        // 寻找安全的位置
-        for (int y = 0; y < 10; y++) {
-            Location checkLoc = location.clone().add(0, y, 0);
-            if (checkLoc.getBlock().getType().isSolid() && 
-                checkLoc.clone().add(0, 1, 0).getBlock().isEmpty() &&
-                checkLoc.clone().add(0, 2, 0).getBlock().isEmpty()) {
-                return checkLoc.clone().add(0, 1, 0);
-            }
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            entityManager.teleportEntity(this, current);
         }
-        return location;
-    }
-    
-    private Location findWaterLocation(Location center) {
-        // 在周围寻找水
-        for (int x = -10; x <= 10; x++) {
-            for (int z = -10; z <= 10; z++) {
-                Location checkLoc = center.clone().add(x, 0, z);
-                if (checkLoc.getBlock().getType() == Material.WATER) {
-                    return checkLoc;
-                }
-            }
-        }
-        return null;
     }
     
     private void checkSafety() {
-        if (entity == null || !entity.isValid()) {
+        if (!isSpawned()) {
             return;
         }
         
-        Location currentLoc = entity.getLocation();
+        Location currentLoc = getLocation();
         
         // 防止掉入虚空
         if (currentLoc.getY() < 0 && plugin.getPluginConfig().getBoolean("safety.prevent-void", true)) {
-            entity.teleport(safeLocation);
+            EntityManager entityManager = plugin.getEntityManager();
+            if (entityManager != null) {
+                entityManager.teleportEntity(this, safeLocation);
+            }
             sendNotification("§c假人 " + name + " 即将掉入虚空，已传送到安全位置");
             return;
         }
@@ -386,7 +376,10 @@ public class Dummy {
         // 检查危险方块
         Material blockType = currentLoc.getBlock().getType();
         if (isDangerousBlock(blockType) && plugin.getPluginConfig().getBoolean("safety.prevent-dangerous-areas", true)) {
-            entity.teleport(safeLocation);
+            EntityManager entityManager = plugin.getEntityManager();
+            if (entityManager != null) {
+                entityManager.teleportEntity(this, safeLocation);
+            }
             sendNotification("§c假人 " + name + " 处于危险区域，已传送到安全位置");
             return;
         }
@@ -395,39 +388,6 @@ public class Dummy {
         if (isSafeLocation(currentLoc)) {
             safeLocation = currentLoc.clone();
         }
-    }
-    
-    private boolean isDangerousBlock(Material material) {
-        return material == Material.LAVA || 
-               material == Material.FIRE || 
-               material == Material.CAMPFIRE ||
-               material == Material.SOUL_CAMPFIRE ||
-               material == Material.CACTUS ||
-               material == Material.SWEET_BERRY_BUSH;
-    }
-    
-    private boolean isSafeLocation(Location location) {
-        return location.getBlock().getType().isSolid() && 
-               location.clone().add(0, 1, 0).getBlock().isEmpty() &&
-               !isDangerousBlock(location.getBlock().getType()) &&
-               !isDangerousBlock(location.clone().add(0, 1, 0).getBlock().getType());
-    }
-    
-    private boolean isTool(Material material) {
-        String name = material.name();
-        return name.endsWith("_PICKAXE") || 
-               name.endsWith("_AXE") || 
-               name.endsWith("_SHOVEL") || 
-               name.endsWith("_HOE") ||
-               name.equals("FISHING_ROD");
-    }
-    
-    private boolean isWeapon(Material material) {
-        String name = material.name();
-        return name.endsWith("_SWORD") || 
-               name.endsWith("_BOW") || 
-               name.equals("CROSSBOW") ||
-               name.equals("TRIDENT");
     }
     
     // 工具检查相关方法
@@ -446,7 +406,7 @@ public class Dummy {
         return findToolInInventory(requiredTool) != null;
     }
     
-    private boolean hasWeapon() {
+    private boolean hasWeaponInHand() {
         // 检查假人手中是否有武器
         if (inventory != null && inventory.length > 0) {
             ItemStack mainHand = inventory[0];
@@ -544,28 +504,12 @@ public class Dummy {
                     inventory[i] = currentHand;
                     inventory[0] = tool;
                     
-                    // 更新实体装备
-                    if (entity != null) {
-                        updateEquipment(entity);
-                    }
+                    // 更新装备
+                    updateEquipment();
                     break;
                 }
             }
         }
-    }
-    
-    private String getToolDisplayName(Material tool) {
-        String name = tool.name();
-        if (name.endsWith("_PICKAXE")) return "镐子";
-        if (name.endsWith("_AXE")) return "斧头";
-        if (name.endsWith("_SHOVEL")) return "铲子";
-        if (name.endsWith("_HOE")) return "锄头";
-        if (name.equals("FISHING_ROD")) return "钓鱼竿";
-        if (name.endsWith("_SWORD")) return "剑";
-        if (name.endsWith("_BOW")) return "弓";
-        if (name.equals("CROSSBOW")) return "弩";
-        if (name.equals("TRIDENT")) return "三叉戟";
-        return "工具";
     }
     
     // 工具耐久度相关方法
@@ -626,7 +570,7 @@ public class Dummy {
         }
     }
     
-    // 检查假人是否有食物（用于饥饿度管理）
+    // 食物管理系统
     private boolean hasFood() {
         if (inventory == null) return false;
         
@@ -639,24 +583,6 @@ public class Dummy {
         }
         
         return false;
-    }
-    
-    private boolean isFood(Material material) {
-        // 简单的食物判断
-        String name = material.name();
-        return name.contains("_APPLE") ||
-               name.equals("BREAD") ||
-               name.equals("COOKED_BEEF") ||
-               name.equals("COOKED_CHICKEN") ||
-               name.equals("COOKED_PORKCHOP") ||
-               name.equals("COOKED_MUTTON") ||
-               name.equals("COOKED_RABBIT") ||
-               name.equals("COOKED_SALMON") ||
-               name.equals("COOKED_COD") ||
-               name.equals("CAKE") ||
-               name.equals("PUMPKIN_PIE") ||
-               name.equals("GOLDEN_APPLE") ||
-               name.equals("ENCHANTED_GOLDEN_APPLE");
     }
     
     private void checkHunger() {
@@ -692,54 +618,96 @@ public class Dummy {
         }
     }
     
-    private void updateDisplayName() {
-        if (entity == null || !entity.isValid()) {
-            return;
-        }
-        
-        String format = plugin.getPluginConfig().getString("visual.name-format", "&e{owner}&7_&6NPC");
-        String displayName = format
-            .replace("{owner}", Bukkit.getOfflinePlayer(ownerUuid).getName())
-            .replace("{health}", String.format("%.1f", health))
-            .replace("{maxHealth}", String.format("%.1f", maxHealth))
-            .replace("{mode}", getModeDisplayName())
-            .replace("{time}", formatTime(maxOnlineTime - onlineTime));
-        
-        // 添加颜色代码
-        displayName = displayName.replace("&", "§");
-        
-        entity.setCustomName(displayName);
-        
-        // 是否显示血量
-        boolean showHealth = plugin.getPluginConfig().getBoolean("visual.show-health", true);
-        entity.setCustomNameVisible(showHealth);
+    // 工具方法
+    private boolean isTool(Material material) {
+        String name = material.name();
+        return name.endsWith("_PICKAXE") || 
+               name.endsWith("_AXE") || 
+               name.endsWith("_SHOVEL") || 
+               name.endsWith("_HOE") ||
+               name.equals("FISHING_ROD");
     }
     
-    private void updateEquipment(Zombie zombie) {
-        EntityEquipment equipment = zombie.getEquipment();
-        if (equipment == null) {
-            return;
+    private boolean isWeapon(Material material) {
+        String name = material.name();
+        return name.endsWith("_SWORD") || 
+               name.endsWith("_BOW") || 
+               name.equals("CROSSBOW") ||
+               name.equals("TRIDENT");
+    }
+    
+    private boolean isFood(Material material) {
+        // 简单的食物判断
+        String name = material.name();
+        return name.contains("_APPLE") ||
+               name.equals("BREAD") ||
+               name.equals("COOKED_BEEF") ||
+               name.equals("COOKED_CHICKEN") ||
+               name.equals("COOKED_PORKCHOP") ||
+               name.equals("COOKED_MUTTON") ||
+               name.equals("COOKED_RABBIT") ||
+               name.equals("COOKED_SALMON") ||
+               name.equals("COOKED_COD") ||
+               name.equals("CAKE") ||
+               name.equals("PUMPKIN_PIE") ||
+               name.equals("GOLDEN_APPLE") ||
+               name.equals("ENCHANTED_GOLDEN_APPLE");
+    }
+    
+    private boolean isDangerousBlock(Material material) {
+        return material == Material.LAVA || 
+               material == Material.FIRE || 
+               material == Material.CAMPFIRE ||
+               material == Material.SOUL_CAMPFIRE ||
+               material == Material.CACTUS ||
+               material == Material.SWEET_BERRY_BUSH;
+    }
+    
+    private boolean isSafeLocation(Location location) {
+        return location.getBlock().getType().isSolid() && 
+               location.clone().add(0, 1, 0).getBlock().isEmpty() &&
+               !isDangerousBlock(location.getBlock().getType()) &&
+               !isDangerousBlock(location.clone().add(0, 1, 0).getBlock().getType());
+    }
+    
+    private Location findSafeLocation(Location location) {
+        // 寻找安全的位置
+        for (int y = 0; y < 10; y++) {
+            Location checkLoc = location.clone().add(0, y, 0);
+            if (checkLoc.getBlock().getType().isSolid() && 
+                checkLoc.clone().add(0, 1, 0).getBlock().isEmpty() &&
+                checkLoc.clone().add(0, 2, 0).getBlock().isEmpty()) {
+                return checkLoc.clone().add(0, 1, 0);
+            }
         }
-        
-        // 设置装备
-        if (armor != null && armor.length >= 4) {
-            equipment.setHelmet(armor[0]);
-            equipment.setChestplate(armor[1]);
-            equipment.setLeggings(armor[2]);
-            equipment.setBoots(armor[3]);
+        return location;
+    }
+    
+    private Location findWaterLocation(Location center) {
+        // 在周围寻找水
+        for (int x = -10; x <= 10; x++) {
+            for (int z = -10; z <= 10; z++) {
+                Location checkLoc = center.clone().add(x, 0, z);
+                if (checkLoc.getBlock().getType() == Material.WATER) {
+                    return checkLoc;
+                }
+            }
         }
-        
-        // 设置主手物品
-        if (inventory != null && inventory.length > 0) {
-            equipment.setItemInMainHand(inventory[0]);
-        }
-        
-        // 防止装备掉落
-        equipment.setHelmetDropChance(0);
-        equipment.setChestplateDropChance(0);
-        equipment.setLeggingsDropChance(0);
-        equipment.setBootsDropChance(0);
-        equipment.setItemInMainHandDropChance(0);
+        return null;
+    }
+    
+    private String getToolDisplayName(Material tool) {
+        String name = tool.name();
+        if (name.endsWith("_PICKAXE")) return "镐子";
+        if (name.endsWith("_AXE")) return "斧头";
+        if (name.endsWith("_SHOVEL")) return "铲子";
+        if (name.endsWith("_HOE")) return "锄头";
+        if (name.equals("FISHING_ROD")) return "钓鱼竿";
+        if (name.endsWith("_SWORD")) return "剑";
+        if (name.endsWith("_BOW")) return "弓";
+        if (name.equals("CROSSBOW")) return "弩";
+        if (name.equals("TRIDENT")) return "三叉戟";
+        return "工具";
     }
     
     private String getModeDisplayName() {
@@ -763,6 +731,50 @@ public class Dummy {
         }
     }
     
+    private void updateDisplayName() {
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager == null) {
+            return;
+        }
+        
+        entityManager.updateEntityName(this);
+    }
+    
+    private void updateEquipment() {
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager == null) {
+            return;
+        }
+        
+        entityManager.updateEntityEquipment(this);
+    }
+    
+    private void playMiningParticles() {
+        // 播放挖矿粒子效果
+        if (isSpawned() && plugin.getPluginConfig().getBoolean("visual.particle-effects", true)) {
+            Location loc = getLocation().add(0, 1.5, 0);
+            getLocation().getWorld().spawnParticle(org.bukkit.Particle.BLOCK_CRACK, loc, 10, 
+                org.bukkit.Material.STONE.createBlockData());
+        }
+    }
+    
+    private void playChoppingParticles() {
+        // 播放砍树粒子效果
+        if (isSpawned() && plugin.getPluginConfig().getBoolean("visual.particle-effects", true)) {
+            Location loc = getLocation().add(0, 1.5, 0);
+            getLocation().getWorld().spawnParticle(org.bukkit.Particle.BLOCK_CRACK, loc, 10, 
+                org.bukkit.Material.OAK_LOG.createBlockData());
+        }
+    }
+    
+    private void playFishingParticles() {
+        // 播放钓鱼粒子效果
+        if (isSpawned() && plugin.getPluginConfig().getBoolean("visual.particle-effects", true)) {
+            Location loc = getLocation().add(0, 1, 0);
+            getLocation().getWorld().spawnParticle(org.bukkit.Particle.WATER_SPLASH, loc, 5);
+        }
+    }
+    
     private void sendNotification(String message) {
         Player owner = Bukkit.getPlayer(ownerUuid);
         if (owner != null && owner.isOnline() && 
@@ -781,7 +793,14 @@ public class Dummy {
     }
     
     public Location getLocation() {
-        return entity != null ? entity.getLocation() : location;
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            Location entityLoc = entityManager.getEntityLocation(this);
+            if (entityLoc != null) {
+                return entityLoc;
+            }
+        }
+        return location;
     }
     
     public double getHealth() {
@@ -790,9 +809,6 @@ public class Dummy {
     
     public void setHealth(double health) {
         this.health = health;
-        if (entity != null && entity.isValid()) {
-            entity.setHealth(health);
-        }
     }
     
     public double getMaxHealth() {
@@ -801,9 +817,6 @@ public class Dummy {
     
     public void setMaxHealth(double maxHealth) {
         this.maxHealth = maxHealth;
-        if (entity != null && entity.isValid()) {
-            Objects.requireNonNull(entity.getAttribute(Attribute.GENERIC_MAX_HEALTH)).setBaseValue(maxHealth);
-        }
     }
     
     public String getMode() {
@@ -836,6 +849,7 @@ public class Dummy {
     
     public void setInventory(ItemStack[] inventory) {
         this.inventory = inventory;
+        updateEquipment();
     }
     
     public ItemStack[] getArmor() {
@@ -844,6 +858,7 @@ public class Dummy {
     
     public void setArmor(ItemStack[] armor) {
         this.armor = armor;
+        updateEquipment();
     }
     
     public Map<String, Object> getExtraData() {
@@ -859,11 +874,395 @@ public class Dummy {
     }
     
     public String getDisplayName() {
-        String format = plugin.getPluginConfig().getString("visual.name-format", "&e{owner}&7_&6NPC");
+        String format = plugin.getPluginConfig().getString("visual.name-format", "&e{owner}&7_&6假人");
         return format.replace("{owner}", Bukkit.getOfflinePlayer(ownerUuid).getName()).replace("&", "§");
     }
     
     public boolean isSpawned() {
-        return entity != null && entity.isValid();
+        EntityManager entityManager = plugin.getEntityManager();
+        if (entityManager != null) {
+            return entityManager.isEntityValid(this);
+        }
+        return false;
+    }
+    
+    // 盔甲架相关方法
+    public ArmorStand getArmorStand() {
+        return armorStand;
+    }
+    
+    public void setArmorStand(ArmorStand armorStand) {
+        this.armorStand = armorStand;
+    }
+    
+    /**
+     * 尝试收集物品到背包
+     * @param material 要收集的物品类型
+     */
+    public void tryCollectItem(Material material) {
+        if (inventory == null) {
+            return;
+        }
+        
+        // 检查背包是否有空位
+        int emptySlot = -1;
+        for (int i = 0; i < inventory.length; i++) {
+            if (inventory[i] == null || inventory[i].getType() == Material.AIR) {
+                emptySlot = i;
+                break;
+            }
+        }
+        
+        if (emptySlot == -1) {
+            // 背包已满，通知主人
+            sendNotification("§c假人背包已满，无法收集 " + getMaterialDisplayName(material));
+            return;
+        }
+        
+        // 创建物品并添加到背包
+        ItemStack item = new ItemStack(material, 1);
+        inventory[emptySlot] = item;
+        
+        // 通知主人
+        sendNotification("§a假人收集了 " + getMaterialDisplayName(material));
+        
+        // 更新装备显示
+        updateEquipment();
+    }
+    
+    /**
+     * 获取物品的显示名称
+     */
+    private String getMaterialDisplayName(Material material) {
+        String name = material.name().toLowerCase();
+        // 简单的名称转换
+        if (name.contains("log")) return "原木";
+        if (name.contains("planks")) return "木板";
+        if (name.contains("coal")) return "煤炭";
+        if (name.contains("iron")) return "铁矿石";
+        if (name.contains("gold")) return "金矿石";
+        if (name.contains("diamond")) return "钻石";
+        if (name.contains("emerald")) return "绿宝石";
+        if (name.contains("redstone")) return "红石";
+        if (name.contains("lapis")) return "青金石";
+        return material.name();
+    }
+    
+    // ============ 新的智能行为方法 ============
+    
+    /**
+     * 开始挖矿行为
+     */
+    public void startMining(Material oreType, Location location) {
+        if (!isSpawned() || !getMode().equals("follow")) {
+            return;
+        }
+        
+        sendNotification("§a假人正在帮你挖矿...");
+        
+        // 检查是否有镐子
+        if (!hasToolForMining()) {
+            sendNotification("§c假人没有镐子，无法挖矿！");
+            return;
+        }
+        
+        // 检查背包空间
+        if (isInventoryFull()) {
+            sendNotification("§c假人背包已满，无法收集矿石！");
+            return;
+        }
+        
+        // 移动到矿石位置附近
+        moveTowards(location);
+        
+        // 播放挖矿粒子效果
+        playMiningParticles();
+        
+        // 尝试收集矿石
+        tryCollectItem(oreType);
+    }
+    
+    /**
+     * 开始砍树行为
+     */
+    public void startChopping(Material logType, Location location) {
+        if (!isSpawned() || !getMode().equals("follow")) {
+            return;
+        }
+        
+        sendNotification("§a假人正在帮你砍树...");
+        
+        // 检查是否有斧头
+        if (!hasToolForChopping()) {
+            sendNotification("§c假人没有斧头，无法砍树！");
+            return;
+        }
+        
+        // 检查背包空间
+        if (isInventoryFull()) {
+            sendNotification("§c假人背包已满，无法收集原木！");
+            return;
+        }
+        
+        // 移动到树木位置附近
+        moveTowards(location);
+        
+        // 播放砍树粒子效果
+        playChoppingParticles();
+        
+        // 尝试收集原木
+        tryCollectItem(logType);
+    }
+    
+    /**
+     * 开始钓鱼行为
+     */
+    public void startFishing(Location location) {
+        if (!isSpawned() || !getMode().equals("follow")) {
+            return;
+        }
+        
+        sendNotification("§a假人正在陪你钓鱼...");
+        
+        // 检查是否有钓鱼竿
+        if (!hasFishingRod()) {
+            sendNotification("§c假人没有钓鱼竿，无法钓鱼！");
+            return;
+        }
+        
+        // 寻找水边位置
+        Location waterLocation = findWaterLocation(location);
+        if (waterLocation == null) {
+            sendNotification("§c附近没有水，无法钓鱼！");
+            return;
+        }
+        
+        // 移动到水边
+        moveTowards(waterLocation);
+        
+        // 播放钓鱼粒子效果
+        playFishingParticles();
+    }
+    
+    /**
+     * 保护主人免受攻击
+     */
+    public void protectOwner(Entity attacker) {
+        if (!isSpawned() || !getMode().equals("follow")) {
+            return;
+        }
+        
+        sendNotification("§c假人正在保护你！");
+        
+        // 检查是否有武器
+        if (!hasWeaponNew()) {
+            sendNotification("§c假人没有武器，无法战斗！");
+            return;
+        }
+        
+        // 冲向攻击者
+        if (attacker != null) {
+            Location attackerLoc = attacker.getLocation();
+            moveTowards(attackerLoc);
+            
+            // 看向攻击者
+            if (plugin.getEntityManager() != null) {
+                plugin.getEntityManager().lookAt(this, attackerLoc);
+            }
+            
+            // 播放战斗粒子效果
+            playCombatParticles();
+        }
+    }
+    
+    /**
+     * 吃东西
+     */
+    public void consumeFood(Material foodType) {
+        if (!isSpawned() || !getMode().equals("follow")) {
+            return;
+        }
+        
+        // 检查假人是否需要吃东西（饥饿度管理）
+        if (needsFood()) {
+            // 检查背包中是否有食物
+            ItemStack food = findFoodInInventory();
+            if (food != null) {
+                sendNotification("§a假人正在吃东西...");
+                // 消耗食物
+                consumeFoodItem(food);
+            } else {
+                sendNotification("§c假人饿了，但背包里没有食物！");
+            }
+        }
+    }
+    
+    // ============ 工具检查方法 ============
+    
+    /**
+     * 检查是否有挖矿工具
+     */
+    private boolean hasToolForMining() {
+        // 检查假人手中的工具
+        ItemStack handItem = getCurrentTool();
+        if (handItem != null && isPickaxe(handItem.getType())) {
+            return true;
+        }
+        
+        // 检查背包中是否有镐子
+        return findToolInInventory(Material.DIAMOND_PICKAXE) != null ||
+               findToolInInventory(Material.IRON_PICKAXE) != null ||
+               findToolInInventory(Material.STONE_PICKAXE) != null ||
+               findToolInInventory(Material.WOODEN_PICKAXE) != null ||
+               findToolInInventory(Material.GOLDEN_PICKAXE) != null;
+    }
+    
+    /**
+     * 检查是否有砍树工具
+     */
+    private boolean hasToolForChopping() {
+        // 检查假人手中的工具
+        ItemStack handItem = getCurrentTool();
+        if (handItem != null && isAxe(handItem.getType())) {
+            return true;
+        }
+        
+        // 检查背包中是否有斧头
+        return findToolInInventory(Material.DIAMOND_AXE) != null ||
+               findToolInInventory(Material.IRON_AXE) != null ||
+               findToolInInventory(Material.STONE_AXE) != null ||
+               findToolInInventory(Material.WOODEN_AXE) != null ||
+               findToolInInventory(Material.GOLDEN_AXE) != null;
+    }
+    
+    /**
+     * 检查是否有钓鱼竿
+     */
+    private boolean hasFishingRod() {
+        // 检查假人手中的工具
+        ItemStack handItem = getCurrentTool();
+        if (handItem != null && handItem.getType() == Material.FISHING_ROD) {
+            return true;
+        }
+        
+        // 检查背包中是否有钓鱼竿
+        return findToolInInventory(Material.FISHING_ROD) != null;
+    }
+    
+    /**
+     * 检查是否有武器（新版本）
+     */
+    private boolean hasWeaponNew() {
+        // 检查假人手中的工具
+        ItemStack handItem = getCurrentTool();
+        if (handItem != null && isWeapon(handItem.getType())) {
+            return true;
+        }
+        
+        // 检查背包中是否有武器
+        for (ItemStack item : inventory) {
+            if (item != null && isWeapon(item.getType())) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * 检查背包是否已满
+     */
+    private boolean isInventoryFull() {
+        if (inventory == null) return true;
+        
+        for (ItemStack item : inventory) {
+            if (item == null || item.getType() == Material.AIR) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    /**
+     * 检查假人是否需要吃东西
+     */
+    private boolean needsFood() {
+        // 简单的饥饿度管理：每10分钟需要吃一次东西
+        long currentTime = System.currentTimeMillis();
+        if (lastFoodTime == 0) {
+            lastFoodTime = currentTime;
+            return false;
+        }
+        
+        // 10分钟 = 600000毫秒
+        return currentTime - lastFoodTime > 600000;
+    }
+    
+    /**
+     * 在背包中寻找食物
+     */
+    private ItemStack findFoodInInventory() {
+        if (inventory == null) return null;
+        
+        for (ItemStack item : inventory) {
+            if (item != null && item.getType().isEdible()) {
+                return item;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * 消耗食物
+     */
+    private void consumeFoodItem(ItemStack food) {
+        // 减少食物数量
+        int amount = food.getAmount() - 1;
+        if (amount <= 0) {
+            // 从背包中移除空的食物
+            for (int i = 0; i < inventory.length; i++) {
+                if (inventory[i] == food) {
+                    inventory[i] = null;
+                    break;
+                }
+            }
+        } else {
+            food.setAmount(amount);
+        }
+        
+        // 更新最后一次吃东西的时间
+        lastFoodTime = System.currentTimeMillis();
+        
+        // 播放吃东西粒子效果
+        playEatingParticles();
+    }
+    
+    // ============ 粒子效果方法 ============
+    
+    private void playCombatParticles() {
+        // 战斗粒子效果实现
+        // 这里可以添加实际的粒子效果
+    }
+    
+    private void playEatingParticles() {
+        // 吃东西粒子效果实现
+        // 这里可以添加实际的粒子效果
+    }
+    
+    // 判断是否是镐子
+    private boolean isPickaxe(Material material) {
+        return material == Material.DIAMOND_PICKAXE ||
+               material == Material.IRON_PICKAXE ||
+               material == Material.STONE_PICKAXE ||
+               material == Material.WOODEN_PICKAXE ||
+               material == Material.GOLDEN_PICKAXE;
+    }
+    
+    // 判断是否是斧头
+    private boolean isAxe(Material material) {
+        return material == Material.DIAMOND_AXE ||
+               material == Material.IRON_AXE ||
+               material == Material.STONE_AXE ||
+               material == Material.WOODEN_AXE ||
+               material == Material.GOLDEN_AXE;
     }
 }

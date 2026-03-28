@@ -5,6 +5,7 @@ api-version: '1.16'
 authors: ['wp:1258']
 description: '智能假人插件 - 召唤假人帮你挂机、收集资源、保护玩家'
 depend: ['Vault']
+softdepend: ['Citizens']
 commands:
     fakeman:
         description: '打开假人控制界面'
