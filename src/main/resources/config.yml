@@ -1,0 +1,108 @@
+# FakeMan 插件配置文件
+# ScriptIrc-config-version: 1
+
+# 假人基础设置
+dummy:
+  # 假人默认血量
+  default-health: 100
+  # 假人默认在线时间（秒）
+  default-online-time: 3600
+  # 假人最大在线时间（秒）
+  max-online-time: 86400
+  # 假人背包大小（格数）
+  inventory-size: 36
+  # 假人默认模式：idle=挂机，follow=跟随
+  default-mode: "idle"
+  # 假人AI更新频率（ticks）
+  ai-update-interval: 20
+
+# 经济设置
+economy:
+  # 召唤假人所需金额
+  summon-cost: 30000
+  # 是否启用经济系统
+  enabled: true
+
+# 权限设置
+permissions:
+  # 基础使用权限
+  use-permission: "FakeMan.use"
+  # 扩展权限（更多假人+延长在线时间）
+  expend-permission: "FakeMan.expend"
+  # 管理员权限
+  admin-permission: "FakeMan.admin"
+
+# 假人数量限制
+limits:
+  # 默认每个玩家最大假人数
+  default-max-dummies: 1
+  # 有扩展权限时的最大假人数
+  expend-max-dummies: 5
+  # 服务器总假人数限制（0=无限制）
+  server-max-dummies: 0
+
+# 假人AI设置
+ai:
+  # 跟随距离（格）
+  follow-distance: 10
+  # 最大跟随距离（格）
+  max-follow-distance: 30
+  # 是否启用智能识别
+  smart-recognition: true
+  # 行为模仿延迟（ticks）
+  imitation-delay: 10
+  # 保护玩家距离（格）
+  protect-distance: 15
+
+# 安全设置
+safety:
+  # 防止掉入虚空
+  prevent-void: true
+  # 防止进入危险区域（岩浆、仙人掌等）
+  prevent-dangerous-areas: true
+  # 假人死亡后自动消失
+  remove-on-death: true
+  # 假人受到攻击时通知主人
+  notify-on-attack: true
+
+# 通知设置
+notifications:
+  # 聊天栏消息
+  chat-messages: true
+  # 声音提示
+  sound-effects: true
+  # 通知声音类型
+  sound-type: "ENTITY_EXPERIENCE_ORB_PICKUP"
+  # 声音音量
+  sound-volume: 1.0
+  # 声音音高
+  sound-pitch: 1.0
+
+# 数据存储
+storage:
+  # 存储类型：sqlite, mysql, yaml
+  type: "sqlite"
+  # SQLite数据库文件名
+  sqlite-file: "fakeman.db"
+  # 自动保存间隔（秒）
+  auto-save-interval: 300
+
+# 视觉效果
+visual:
+  # 假人名称显示格式
+  name-format: "&e{owner}&7_&6NPC"
+  # 是否显示假人血量
+  show-health: true
+  # 假人名称标签可见距离
+  name-tag-distance: 16
+  # 假人粒子效果
+  particle-effects: true
+  # 粒子效果类型
+  particle-type: "VILLAGER_HAPPY"
+
+# 调试设置
+debug:
+  # 启用调试模式
+  enabled: false
+  # 调试日志级别
+  log-level: "INFO"

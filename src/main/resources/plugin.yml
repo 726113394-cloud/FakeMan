@@ -1,0 +1,23 @@
+name: FakeMan
+version: '1.0.0'
+main: io.Sriptirc_wp_1258.fakeman.Fakeman
+api-version: '1.16'
+authors: ['wp:1258']
+description: '智能假人插件 - 召唤假人帮你挂机、收集资源、保护玩家'
+depend: ['Vault']
+commands:
+    fakeman:
+        description: '打开假人控制界面'
+        aliases: ['dummy', 'npc']
+    fm:
+        description: '假人插件快捷命令'
+permissions:
+    FakeMan.use:
+        description: '使用假人插件的基本权限'
+        default: false
+    FakeMan.expend:
+        description: '允许召唤多个假人并延长在线时间'
+        default: false
+    FakeMan.admin:
+        description: '管理员权限，可管理所有假人'
+        default: false
