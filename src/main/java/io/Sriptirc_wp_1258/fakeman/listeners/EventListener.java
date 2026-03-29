@@ -18,6 +18,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
@@ -252,34 +253,28 @@ public class EventListener implements Listener {
             // 查找对应的假人
             Dummy dummy = plugin.getDummyManager().getDummyByName(dummyName);
             if (dummy != null) {
-                // 保存完整的背包数据（41格：36主背包 + 4护甲 + 1副手）
-                ItemStack[] dummyInventory = new ItemStack[41];
-                ItemStack[] dummyArmor = new ItemStack[4];
+                // 保存背包数据到新的结构
+                ItemStack[] mainInventory = new ItemStack[36];
+                ItemStack[] armorInventory = new ItemStack[4];
+                ItemStack offhandItem = null;
                 
                 // 保存主背包内容（0-35格）
                 for (int i = 0; i < 36; i++) {
-                    dummyInventory[i] = inventory.getItem(i);
+                    mainInventory[i] = inventory.getItem(i);
                 }
                 
-                // 保存护甲栏
-                dummyArmor[0] = inventory.getItem(39); // 头盔
-                dummyArmor[1] = inventory.getItem(38); // 胸甲
-                dummyArmor[2] = inventory.getItem(37); // 护腿
-                dummyArmor[3] = inventory.getItem(36); // 靴子
-                
-                // 保存副手栏（第36格）
-                dummyInventory[36] = inventory.getItem(40);
-                
-                // 保存快捷栏到对应的主背包位置（0-8格）
-                for (int i = 0; i < 9; i++) {
-                    ItemStack quickSlotItem = inventory.getItem(i + 45);
-                    if (quickSlotItem != null) {
-                        dummyInventory[i] = quickSlotItem;
-                    }
+                // 保存护甲栏（36-39格）
+                for (int i = 0; i < 4; i++) {
+                    armorInventory[i] = inventory.getItem(36 + i);
                 }
                 
-                dummy.setInventory(dummyInventory);
-                dummy.setArmor(dummyArmor);
+                // 保存副手栏（40格）
+                offhandItem = inventory.getItem(40);
+                
+                // 设置假人的背包数据
+                dummy.setMainInventory(mainInventory);
+                dummy.setArmorInventory(armorInventory);
+                dummy.setOffhandItem(offhandItem);
                 
                 // 保存到数据库
                 plugin.getDummyManager().saveDummy(dummy);
@@ -291,57 +286,97 @@ public class EventListener implements Listener {
         }
     }
     
+    @EventHandler
+    public void onInventoryClick(InventoryClickEvent event) {
+        // 检查是否是假人背包
+        String title = event.getView().getTitle();
+        if (title.contains("的背包")) {
+            int slot = event.getRawSlot();
+            
+            // 检查是否点击了护甲栏位置（36-39是护甲栏，40是副手栏）
+            if (slot >= 36 && slot <= 39) {
+                ItemStack currentItem = event.getCurrentItem();
+                ItemStack cursorItem = event.getCursor();
+                
+                // 如果是放置物品到护甲栏
+                if (cursorItem != null && cursorItem.getType() != Material.AIR) {
+                    boolean isValidArmor = false;
+                    
+                    // 检查物品是否是合适的护甲类型
+                    switch (slot) {
+                        case 36: // 头盔位置
+                            isValidArmor = isValidHelmet(cursorItem);
+                            break;
+                        case 37: // 胸甲位置
+                            isValidArmor = isValidChestplate(cursorItem);
+                            break;
+                        case 38: // 护腿位置
+                            isValidArmor = isValidLeggings(cursorItem);
+                            break;
+                        case 39: // 靴子位置
+                            isValidArmor = isValidBoots(cursorItem);
+                            break;
+                    }
+                    
+                    // 如果不是有效的护甲，取消事件
+                    if (!isValidArmor) {
+                        event.setCancelled(true);
+                        Player player = (Player) event.getWhoClicked();
+                        player.sendMessage("§c这个位置只能放置护甲！");
+                    }
+                }
+            }
+            
+            // 检查是否点击了副手栏位置（40）
+            if (slot == 40) {
+                // 副手栏可以放置任何物品，不需要限制
+                // 但我们可以添加一些限制，比如不能放置某些特殊物品
+            }
+        }
+    }
+    
     // 工具方法
     private void openDummyInventory(Player player, Dummy dummy) {
-        // 创建玩家背包界面（54格，包含护甲栏和副手栏）
-        Inventory inventory = Bukkit.createInventory(
+        // 创建一个临时的玩家背包副本（41格：36主背包 + 4护甲栏 + 1副手栏）
+        Inventory dummyInventory = Bukkit.createInventory(
             null, 
-            54, // 玩家背包大小：36格主背包 + 27格额外空间（用于显示护甲栏和副手栏）
+            41, // 玩家背包大小
             ChatColor.GOLD + dummy.getName() + ChatColor.GRAY + "的背包"
         );
         
-        // 获取假人的完整背包数据（41格：36主背包 + 4护甲 + 1副手）
-        ItemStack[] dummyInventory = dummy.getInventory();
-        ItemStack[] dummyArmor = dummy.getArmor();
+        // 获取假人的背包数据
+        ItemStack[] mainInventory = dummy.getMainInventory();
+        ItemStack[] armorInventory = dummy.getArmorInventory();
+        ItemStack offhandItem = dummy.getOffhandItem();
         
-        // 设置主背包内容（36格）
-        for (int i = 0; i < 36; i++) {
-            if (i < dummyInventory.length && dummyInventory[i] != null) {
-                inventory.setItem(i, dummyInventory[i]);
+        // 设置主背包内容（0-35格）
+        if (mainInventory != null) {
+            for (int i = 0; i < Math.min(mainInventory.length, 36); i++) {
+                if (mainInventory[i] != null) {
+                    dummyInventory.setItem(i, mainInventory[i]);
+                }
             }
         }
         
-        // 设置护甲栏（在GUI的特定位置）
-        // 头盔 (39)
-        if (dummyArmor.length > 0 && dummyArmor[0] != null) {
-            inventory.setItem(39, dummyArmor[0]);
-        }
-        // 胸甲 (38)
-        if (dummyArmor.length > 1 && dummyArmor[1] != null) {
-            inventory.setItem(38, dummyArmor[1]);
-        }
-        // 护腿 (37)
-        if (dummyArmor.length > 2 && dummyArmor[2] != null) {
-            inventory.setItem(37, dummyArmor[2]);
-        }
-        // 靴子 (36)
-        if (dummyArmor.length > 3 && dummyArmor[3] != null) {
-            inventory.setItem(36, dummyArmor[3]);
-        }
-        
-        // 设置副手栏 (40)
-        if (dummyInventory.length > 36 && dummyInventory[36] != null) {
-            inventory.setItem(40, dummyInventory[36]);
-        }
-        
-        // 设置快捷栏（底部9格）
-        for (int i = 0; i < 9; i++) {
-            if (i < dummyInventory.length && dummyInventory[i] != null) {
-                inventory.setItem(i + 45, dummyInventory[i]); // 45-53是快捷栏位置
+        // 设置护甲栏（36-39格）
+        if (armorInventory != null) {
+            for (int i = 0; i < Math.min(armorInventory.length, 4); i++) {
+                if (armorInventory[i] != null) {
+                    dummyInventory.setItem(36 + i, armorInventory[i]);
+                }
             }
         }
         
-        player.openInventory(inventory);
+        // 设置副手栏（40格）
+        if (offhandItem != null) {
+            dummyInventory.setItem(40, offhandItem);
+        }
+        
+        // 打开背包
+        player.openInventory(dummyInventory);
+        
+        // 记录当前打开的假人
+        openDummies.put(player.getUniqueId(), dummy.getName());
         
         // 发送提示
         player.sendMessage("§a已打开假人背包");
@@ -502,5 +537,38 @@ public class EventListener implements Listener {
             default:
                 return mode;
         }
+    }
+    
+    // 护甲验证方法
+    private boolean isValidHelmet(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_HELMET") || 
+               name.equals("CARVED_PUMPKIN") || 
+               name.equals("TURTLE_HELMET") ||
+               name.equals("SKULL") ||
+               name.equals("PLAYER_HEAD") ||
+               name.equals("ZOMBIE_HEAD") ||
+               name.equals("CREEPER_HEAD") ||
+               name.equals("DRAGON_HEAD");
+    }
+    
+    private boolean isValidChestplate(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_CHESTPLATE") || 
+               name.equals("ELYTRA");
+    }
+    
+    private boolean isValidLeggings(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_LEGGINGS");
+    }
+    
+    private boolean isValidBoots(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_BOOTS");
     }
 }

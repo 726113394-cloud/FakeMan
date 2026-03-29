@@ -107,6 +107,9 @@ public final class Fakeman extends JavaPlugin {
         // 加载所有假人数据
         dummyManager.loadAllDummies();
         
+        // 清理所有假人的无效护甲数据，防止物品复制漏洞
+        dummyManager.cleanInvalidArmorForAllDummies();
+        
         // 显示Citizens连接状态
         displayCitizensConnectionStatus();
         

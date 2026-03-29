@@ -153,10 +153,15 @@ public class CitizensManager implements EntityManager {
                     equipment.setBoots(armor[3]);
                 }
                 
-                // 设置手持物品
-                ItemStack[] inventory = dummy.getInventory();
-                if (inventory != null && inventory.length > 0) {
-                    equipment.setItemInMainHand(inventory[0]);
+                // 设置手持物品（使用主背包的第一个非空物品）
+                ItemStack[] mainInventory = dummy.getMainInventory();
+                if (mainInventory != null) {
+                    for (int i = 0; i < Math.min(mainInventory.length, 9); i++) {
+                        if (mainInventory[i] != null && mainInventory[i].getType() != Material.AIR) {
+                            equipment.setItemInMainHand(mainInventory[i]);
+                            break;
+                        }
+                    }
                 }
             }
             

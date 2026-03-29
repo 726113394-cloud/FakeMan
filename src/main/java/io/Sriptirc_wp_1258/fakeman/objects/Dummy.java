@@ -25,8 +25,10 @@ public class Dummy {
     private String mode; // idle, follow
     private long onlineTime;
     private long maxOnlineTime;
-    private ItemStack[] inventory;
-    private ItemStack[] armor;
+    // 完整的玩家背包结构
+    private ItemStack[] mainInventory;    // 36格主背包 (0-35)
+    private ItemStack[] armorInventory;   // 4格护甲栏 (头盔、胸甲、护腿、靴子)
+    private ItemStack offhandItem;        // 副手栏物品
     private Map<String, Object> extraData;
     
     // AI相关
@@ -46,9 +48,10 @@ public class Dummy {
         this.mode = "idle";
         this.onlineTime = 0;
         this.maxOnlineTime = 3600L;
-        // 完整的玩家背包结构：36格主背包 + 4格护甲栏 + 1格副手栏
-        this.inventory = new ItemStack[41]; // 36格主背包 + 4格护甲栏 + 1格副手栏
-        this.armor = new ItemStack[4]; // 护甲栏（头盔、胸甲、护腿、靴子）
+        // 完整的玩家背包结构
+        this.mainInventory = new ItemStack[36]; // 36格主背包
+        this.armorInventory = new ItemStack[4]; // 4格护甲栏
+        this.offhandItem = null; // 副手栏物品
         this.extraData = new HashMap<>();
         
         // AI初始化
@@ -872,21 +875,76 @@ public class Dummy {
         this.maxOnlineTime = maxOnlineTime;
     }
     
+    // 向后兼容的方法（旧版本）
     public ItemStack[] getInventory() {
-        return inventory;
+        // 将新的背包结构转换为旧的数组格式
+        ItemStack[] oldFormat = new ItemStack[41];
+        if (mainInventory != null) {
+            System.arraycopy(mainInventory, 0, oldFormat, 0, Math.min(mainInventory.length, 36));
+        }
+        if (offhandItem != null) {
+            oldFormat[36] = offhandItem;
+        }
+        return oldFormat;
     }
     
     public void setInventory(ItemStack[] inventory) {
-        this.inventory = inventory;
+        if (inventory == null) {
+            this.mainInventory = new ItemStack[36];
+            this.offhandItem = null;
+            return;
+        }
+        
+        // 从旧格式转换到新格式
+        this.mainInventory = new ItemStack[36];
+        if (inventory.length >= 36) {
+            System.arraycopy(inventory, 0, this.mainInventory, 0, 36);
+        }
+        
+        if (inventory.length > 36) {
+            this.offhandItem = inventory[36];
+        } else {
+            this.offhandItem = null;
+        }
+        
         updateEquipment();
     }
     
+    // 新的背包结构方法
+    public ItemStack[] getMainInventory() {
+        return mainInventory;
+    }
+    
+    public void setMainInventory(ItemStack[] mainInventory) {
+        this.mainInventory = mainInventory;
+        updateEquipment();
+    }
+    
+    public ItemStack[] getArmorInventory() {
+        return armorInventory;
+    }
+    
+    public void setArmorInventory(ItemStack[] armorInventory) {
+        this.armorInventory = armorInventory;
+        updateEquipment();
+    }
+    
+    public ItemStack getOffhandItem() {
+        return offhandItem;
+    }
+    
+    public void setOffhandItem(ItemStack offhandItem) {
+        this.offhandItem = offhandItem;
+        updateEquipment();
+    }
+    
+    // 向后兼容的方法（旧版本）
     public ItemStack[] getArmor() {
-        return armor;
+        return armorInventory;
     }
     
     public void setArmor(ItemStack[] armor) {
-        this.armor = armor;
+        this.armorInventory = armor;
         updateEquipment();
     }
     
@@ -929,14 +987,14 @@ public class Dummy {
      * @param material 要收集的物品类型
      */
     public void tryCollectItem(Material material) {
-        if (inventory == null) {
+        if (mainInventory == null) {
             return;
         }
         
-        // 检查背包是否有空位
+        // 检查主背包是否有空位
         int emptySlot = -1;
-        for (int i = 0; i < inventory.length; i++) {
-            if (inventory[i] == null || inventory[i].getType() == Material.AIR) {
+        for (int i = 0; i < mainInventory.length; i++) {
+            if (mainInventory[i] == null || mainInventory[i].getType() == Material.AIR) {
                 emptySlot = i;
                 break;
             }
@@ -950,7 +1008,7 @@ public class Dummy {
         
         // 创建物品并添加到背包
         ItemStack item = new ItemStack(material, 1);
-        inventory[emptySlot] = item;
+        mainInventory[emptySlot] = item;
         
         // 通知主人
         sendNotification("§a假人收集了 " + getMaterialDisplayName(material));

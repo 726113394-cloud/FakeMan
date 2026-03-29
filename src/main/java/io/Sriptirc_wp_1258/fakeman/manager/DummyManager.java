@@ -5,6 +5,7 @@ import io.Sriptirc_wp_1258.fakeman.database.DatabaseManager;
 import io.Sriptirc_wp_1258.fakeman.objects.Dummy;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -347,5 +348,91 @@ public class DummyManager {
         
         activeDummies.clear();
         playerDummies.clear();
+    }
+    
+    /**
+     * 清理所有假人的无效护甲数据
+     * 移除护甲栏中的非护甲物品，防止物品复制漏洞
+     */
+    public void cleanInvalidArmorForAllDummies() {
+        int cleanedCount = 0;
+        
+        for (Dummy dummy : activeDummies.values()) {
+            ItemStack[] armor = dummy.getArmor();
+            boolean hasInvalidArmor = false;
+            
+            // 检查每个护甲槽位
+            for (int i = 0; i < armor.length; i++) {
+                if (armor[i] != null) {
+                    boolean isValid = false;
+                    
+                    // 根据槽位检查护甲类型
+                    switch (i) {
+                        case 0: // 头盔
+                            isValid = isValidHelmet(armor[i]);
+                            break;
+                        case 1: // 胸甲
+                            isValid = isValidChestplate(armor[i]);
+                            break;
+                        case 2: // 护腿
+                            isValid = isValidLeggings(armor[i]);
+                            break;
+                        case 3: // 靴子
+                            isValid = isValidBoots(armor[i]);
+                            break;
+                    }
+                    
+                    // 如果不是有效的护甲，清除它
+                    if (!isValid) {
+                        armor[i] = null;
+                        hasInvalidArmor = true;
+                        cleanedCount++;
+                    }
+                }
+            }
+            
+            // 如果有无效护甲被清理，保存假人
+            if (hasInvalidArmor) {
+                dummy.setArmor(armor);
+                saveDummy(dummy);
+            }
+        }
+        
+        if (cleanedCount > 0) {
+            plugin.getLogger().info("已清理 " + cleanedCount + " 个无效护甲物品，防止物品复制漏洞");
+        }
+    }
+    
+    // 护甲验证方法（从EventListener复制过来）
+    private boolean isValidHelmet(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_HELMET") || 
+               name.equals("CARVED_PUMPKIN") || 
+               name.equals("TURTLE_HELMET") ||
+               name.equals("SKULL") ||
+               name.equals("PLAYER_HEAD") ||
+               name.equals("ZOMBIE_HEAD") ||
+               name.equals("CREEPER_HEAD") ||
+               name.equals("DRAGON_HEAD");
+    }
+    
+    private boolean isValidChestplate(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_CHESTPLATE") || 
+               name.equals("ELYTRA");
+    }
+    
+    private boolean isValidLeggings(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_LEGGINGS");
+    }
+    
+    private boolean isValidBoots(ItemStack item) {
+        if (item == null) return false;
+        String name = item.getType().name();
+        return name.endsWith("_BOOTS");
     }
 }
