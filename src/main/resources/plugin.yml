@@ -2,8 +2,9 @@ name: FakeMan
 version: '1.0.0'
 main: io.Sriptirc_wp_1258.fakeman.Fakeman
 api-version: '1.16'
-authors: ['wp:1258']
+authors: ['来自太空的小头脑']
 description: '智能假人插件 - 召唤假人帮你挂机、收集资源、保护玩家'
+website: 'https://space.bilibili.com/3493116665400113'
 depend: ['Vault']
 softdepend: ['Citizens']
 commands:

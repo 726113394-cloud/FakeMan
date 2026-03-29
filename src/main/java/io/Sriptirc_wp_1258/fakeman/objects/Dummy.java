@@ -46,8 +46,9 @@ public class Dummy {
         this.mode = "idle";
         this.onlineTime = 0;
         this.maxOnlineTime = 3600L;
-        this.inventory = new ItemStack[36];
-        this.armor = new ItemStack[4];
+        // 完整的玩家背包结构：36格主背包 + 4格护甲栏 + 1格副手栏
+        this.inventory = new ItemStack[41]; // 36格主背包 + 4格护甲栏 + 1格副手栏
+        this.armor = new ItemStack[4]; // 护甲栏（头盔、胸甲、护腿、靴子）
         this.extraData = new HashMap<>();
         
         // AI初始化
@@ -492,21 +493,27 @@ public class Dummy {
     }
     
     private void switchToTool(ItemStack tool) {
-        // 将工具切换到假人手中
+        // 将工具切换到假人手中（快捷栏0-8格）
         if (inventory != null && inventory.length > 0) {
-            // 保存当前手中的物品
+            // 优先使用快捷栏第一格（0）
             ItemStack currentHand = inventory[0];
             
             // 找到工具在背包中的位置
             for (int i = 0; i < inventory.length; i++) {
                 if (inventory[i] != null && inventory[i].equals(tool)) {
-                    // 交换位置
+                    // 如果工具已经在快捷栏中，不需要交换
+                    if (i < 9) {
+                        // 工具已经在快捷栏，直接使用
+                        return;
+                    }
+                    
+                    // 交换位置：将工具放到快捷栏第一格
                     inventory[i] = currentHand;
                     inventory[0] = tool;
                     
                     // 更新装备
                     updateEquipment();
-                    break;
+                    return;
                 }
             }
         }
@@ -514,10 +521,32 @@ public class Dummy {
     
     // 工具耐久度相关方法
     private ItemStack getCurrentTool() {
+        // 检查快捷栏中的所有工具（0-8格）
         if (inventory != null && inventory.length > 0) {
-            return inventory[0];
+            // 优先检查快捷栏第一格（0）
+            if (inventory[0] != null && isTool(inventory[0])) {
+                return inventory[0];
+            }
+            
+            // 检查其他快捷栏位置
+            for (int i = 1; i < Math.min(9, inventory.length); i++) {
+                if (inventory[i] != null && isTool(inventory[i])) {
+                    return inventory[i];
+                }
+            }
         }
         return null;
+    }
+    
+    private boolean isTool(ItemStack item) {
+        if (item == null) return false;
+        Material material = item.getType();
+        return material.name().endsWith("_PICKAXE") || 
+               material.name().endsWith("_AXE") || 
+               material.name().endsWith("_SHOVEL") || 
+               material.name().endsWith("_HOE") || 
+               material.name().endsWith("_SWORD") || 
+               material == Material.FISHING_ROD;
     }
     
     private boolean isToolAboutToBreak(ItemStack tool) {
@@ -1110,11 +1139,20 @@ public class Dummy {
         }
         
         // 检查背包中是否有镐子
-        return findToolInInventory(Material.DIAMOND_PICKAXE) != null ||
-               findToolInInventory(Material.IRON_PICKAXE) != null ||
-               findToolInInventory(Material.STONE_PICKAXE) != null ||
-               findToolInInventory(Material.WOODEN_PICKAXE) != null ||
-               findToolInInventory(Material.GOLDEN_PICKAXE) != null;
+        ItemStack pickaxe = findToolInInventory(Material.DIAMOND_PICKAXE);
+        if (pickaxe == null) pickaxe = findToolInInventory(Material.IRON_PICKAXE);
+        if (pickaxe == null) pickaxe = findToolInInventory(Material.STONE_PICKAXE);
+        if (pickaxe == null) pickaxe = findToolInInventory(Material.WOODEN_PICKAXE);
+        if (pickaxe == null) pickaxe = findToolInInventory(Material.GOLDEN_PICKAXE);
+        
+        if (pickaxe != null) {
+            // 自动切换到镐子
+            switchToTool(pickaxe);
+            sendNotification("§a已自动切换到镐子");
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -1128,11 +1166,20 @@ public class Dummy {
         }
         
         // 检查背包中是否有斧头
-        return findToolInInventory(Material.DIAMOND_AXE) != null ||
-               findToolInInventory(Material.IRON_AXE) != null ||
-               findToolInInventory(Material.STONE_AXE) != null ||
-               findToolInInventory(Material.WOODEN_AXE) != null ||
-               findToolInInventory(Material.GOLDEN_AXE) != null;
+        ItemStack axe = findToolInInventory(Material.DIAMOND_AXE);
+        if (axe == null) axe = findToolInInventory(Material.IRON_AXE);
+        if (axe == null) axe = findToolInInventory(Material.STONE_AXE);
+        if (axe == null) axe = findToolInInventory(Material.WOODEN_AXE);
+        if (axe == null) axe = findToolInInventory(Material.GOLDEN_AXE);
+        
+        if (axe != null) {
+            // 自动切换到斧头
+            switchToTool(axe);
+            sendNotification("§a已自动切换到斧头");
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -1146,7 +1193,15 @@ public class Dummy {
         }
         
         // 检查背包中是否有钓鱼竿
-        return findToolInInventory(Material.FISHING_ROD) != null;
+        ItemStack fishingRod = findToolInInventory(Material.FISHING_ROD);
+        if (fishingRod != null) {
+            // 自动切换到钓鱼竿
+            switchToTool(fishingRod);
+            sendNotification("§a已自动切换到钓鱼竿");
+            return true;
+        }
+        
+        return false;
     }
     
     /**
@@ -1162,6 +1217,9 @@ public class Dummy {
         // 检查背包中是否有武器
         for (ItemStack item : inventory) {
             if (item != null && isWeapon(item.getType())) {
+                // 自动切换到武器
+                switchToTool(item);
+                sendNotification("§a已自动切换到武器");
                 return true;
             }
         }

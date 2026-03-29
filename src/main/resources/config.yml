@@ -1,5 +1,5 @@
 # FakeMan 插件配置文件
-# ScriptIrc-config-version: 3
+# ScriptIrc-config-version: 4
 
 # 假人基础设置
 dummy:
@@ -9,8 +9,8 @@ dummy:
   default-online-time: 3600
   # 假人最大在线时间（秒）
   max-online-time: 86400
-  # 假人背包大小（格数）
-  inventory-size: 36
+  # 假人背包使用完整的玩家背包结构（36格主背包 + 4格护甲栏 + 1格副手栏）
+  # 注意：此配置已固定，无需修改
   # 假人默认模式：idle=挂机，follow=跟随
   default-mode: "idle"
   # 假人AI更新频率（ticks）

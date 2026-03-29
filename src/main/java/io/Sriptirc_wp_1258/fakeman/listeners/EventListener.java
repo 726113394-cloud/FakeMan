@@ -18,7 +18,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
-// import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerFishEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
@@ -235,29 +235,109 @@ public class EventListener implements Listener {
         }
     }
     
-    // @EventHandler
-    // public void onInventoryClose(InventoryCloseEvent event) {
-    //     // 检查是否是假人背包
-    //     if (event.getView().getTitle().contains("的背包")) {
-    //         // 这里可以添加保存假人背包数据的逻辑
-    //         // 注意：假人背包数据已经在Dummy类中管理
-    //     }
-    // }
+    @EventHandler
+    public void onInventoryClose(InventoryCloseEvent event) {
+        // 检查是否是假人背包
+        String title = event.getView().getTitle();
+        if (title.contains("的背包")) {
+            Player player = (Player) event.getPlayer();
+            Inventory inventory = event.getInventory();
+            
+            // 从标题中提取假人名
+            String dummyName = title.replace(ChatColor.GOLD.toString(), "")
+                                   .replace(ChatColor.GRAY.toString(), "")
+                                   .replace("的背包", "")
+                                   .trim();
+            
+            // 查找对应的假人
+            Dummy dummy = plugin.getDummyManager().getDummyByName(dummyName);
+            if (dummy != null) {
+                // 保存完整的背包数据（41格：36主背包 + 4护甲 + 1副手）
+                ItemStack[] dummyInventory = new ItemStack[41];
+                ItemStack[] dummyArmor = new ItemStack[4];
+                
+                // 保存主背包内容（0-35格）
+                for (int i = 0; i < 36; i++) {
+                    dummyInventory[i] = inventory.getItem(i);
+                }
+                
+                // 保存护甲栏
+                dummyArmor[0] = inventory.getItem(39); // 头盔
+                dummyArmor[1] = inventory.getItem(38); // 胸甲
+                dummyArmor[2] = inventory.getItem(37); // 护腿
+                dummyArmor[3] = inventory.getItem(36); // 靴子
+                
+                // 保存副手栏（第36格）
+                dummyInventory[36] = inventory.getItem(40);
+                
+                // 保存快捷栏到对应的主背包位置（0-8格）
+                for (int i = 0; i < 9; i++) {
+                    ItemStack quickSlotItem = inventory.getItem(i + 45);
+                    if (quickSlotItem != null) {
+                        dummyInventory[i] = quickSlotItem;
+                    }
+                }
+                
+                dummy.setInventory(dummyInventory);
+                dummy.setArmor(dummyArmor);
+                
+                // 保存到数据库
+                plugin.getDummyManager().saveDummy(dummy);
+                
+                player.sendMessage("§a假人背包已保存");
+            } else {
+                player.sendMessage("§c未找到对应的假人，背包修改可能未保存");
+            }
+        }
+    }
     
     // 工具方法
     private void openDummyInventory(Player player, Dummy dummy) {
-        int size = plugin.getPluginConfig().getInt("dummy.inventory-size", 36);
+        // 创建玩家背包界面（54格，包含护甲栏和副手栏）
         Inventory inventory = Bukkit.createInventory(
             null, 
-            size, 
+            54, // 玩家背包大小：36格主背包 + 27格额外空间（用于显示护甲栏和副手栏）
             ChatColor.GOLD + dummy.getName() + ChatColor.GRAY + "的背包"
         );
         
-        // 设置背包内容
+        // 获取假人的完整背包数据（41格：36主背包 + 4护甲 + 1副手）
         ItemStack[] dummyInventory = dummy.getInventory();
-        for (int i = 0; i < Math.min(dummyInventory.length, size); i++) {
-            if (dummyInventory[i] != null) {
+        ItemStack[] dummyArmor = dummy.getArmor();
+        
+        // 设置主背包内容（36格）
+        for (int i = 0; i < 36; i++) {
+            if (i < dummyInventory.length && dummyInventory[i] != null) {
                 inventory.setItem(i, dummyInventory[i]);
+            }
+        }
+        
+        // 设置护甲栏（在GUI的特定位置）
+        // 头盔 (39)
+        if (dummyArmor.length > 0 && dummyArmor[0] != null) {
+            inventory.setItem(39, dummyArmor[0]);
+        }
+        // 胸甲 (38)
+        if (dummyArmor.length > 1 && dummyArmor[1] != null) {
+            inventory.setItem(38, dummyArmor[1]);
+        }
+        // 护腿 (37)
+        if (dummyArmor.length > 2 && dummyArmor[2] != null) {
+            inventory.setItem(37, dummyArmor[2]);
+        }
+        // 靴子 (36)
+        if (dummyArmor.length > 3 && dummyArmor[3] != null) {
+            inventory.setItem(36, dummyArmor[3]);
+        }
+        
+        // 设置副手栏 (40)
+        if (dummyInventory.length > 36 && dummyInventory[36] != null) {
+            inventory.setItem(40, dummyInventory[36]);
+        }
+        
+        // 设置快捷栏（底部9格）
+        for (int i = 0; i < 9; i++) {
+            if (i < dummyInventory.length && dummyInventory[i] != null) {
+                inventory.setItem(i + 45, dummyInventory[i]); // 45-53是快捷栏位置
             }
         }
         

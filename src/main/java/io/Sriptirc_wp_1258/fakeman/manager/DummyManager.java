@@ -202,6 +202,40 @@ public class DummyManager {
         return activeDummies.size();
     }
     
+    /**
+     * 根据假人名查找假人
+     * @param dummyName 假人名
+     * @return 找到的假人，如果未找到则返回null
+     */
+    public Dummy getDummyByName(String dummyName) {
+        for (Dummy dummy : activeDummies.values()) {
+            if (dummy.getName().equals(dummyName)) {
+                return dummy;
+            }
+        }
+        return null;
+    }
+    
+    /**
+     * 保存单个假人到数据库
+     * @param dummy 要保存的假人
+     */
+    public void saveDummy(Dummy dummy) {
+        databaseManager.saveDummy(
+            dummy.getOwnerUuid(),
+            dummy.getName(),
+            dummy.getLocation(),
+            dummy.getHealth(),
+            dummy.getMaxHealth(),
+            dummy.getMode(),
+            dummy.getOnlineTime(),
+            dummy.getMaxOnlineTime(),
+            dummy.getInventory(),
+            dummy.getArmor(),
+            dummy.getExtraData()
+        );
+    }
+    
     private void addDummyToMemory(UUID ownerUuid, Dummy dummy) {
         String key = ownerUuid.toString() + ":" + dummy.getName();
         activeDummies.put(key, dummy);

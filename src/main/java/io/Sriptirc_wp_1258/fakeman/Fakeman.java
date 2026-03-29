@@ -140,6 +140,7 @@ public final class Fakeman extends JavaPlugin {
         getLogger().info("═══════════════════════════════════════════════════");
         getLogger().info("FakeMan 假人插件 v" + getDescription().getVersion());
         getLogger().info("作者: " + String.join(", ", getDescription().getAuthors()));
+        getLogger().info("主页: " + getDescription().getWebsite());
         
         if (entityManager != null) {
             String managerType = entityManager.getClass().getSimpleName();
